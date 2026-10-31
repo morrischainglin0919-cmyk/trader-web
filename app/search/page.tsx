@@ -1,21 +1,18 @@
 'use client';
 
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/lib/context/AppContext';
 import { searchAssets } from '@/data';
 import { AnyAsset, AssetCategory } from '@/types/asset';
 import { DataTable } from '@/components/common/DataTable';
 import { EmptyState } from '@/components/common/EmptyState';
+import { LoadingSkeleton } from '@/components/common/LoadingSkeleton';
 import { Search } from 'lucide-react';
 
-export default function SearchResultsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
-  const resolvedParams = use(searchParams);
-  const qParam = resolvedParams.q || '';
+function SearchResultsContent() {
+  const searchParams = useSearchParams();
+  const qParam = searchParams?.get('q') || '';
 
   const [categoryFilter, setCategoryFilter] = useState<AssetCategory | 'all'>('all');
   const [results, setResults] = useState<AnyAsset[]>([]);
@@ -82,5 +79,13 @@ export default function SearchResultsPage({
         />
       )}
     </div>
+  );
+}
+
+export default function SearchResultsPage() {
+  return (
+    <Suspense fallback={<LoadingSkeleton message="載入全站搜尋結果中..." />}>
+      <SearchResultsContent />
+    </Suspense>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/lib/context/AppContext';
 import { marketApi } from '@/lib/api';
@@ -11,13 +11,9 @@ import { AreaTrendChart } from '@/components/charts/AreaTrendChart';
 import { LoadingSkeleton } from '@/components/common/LoadingSkeleton';
 import { Globe, Flag } from 'lucide-react';
 
-export default function MarketsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ region?: string }>;
-}) {
-  const resolvedParams = use(searchParams);
-  const regionParam = (resolvedParams?.region as MarketRegion) || 'GLOBAL';
+function MarketsContent() {
+  const searchParams = useSearchParams();
+  const regionParam = (searchParams?.get('region') as MarketRegion) || 'GLOBAL';
 
   const { assets } = useApp();
   const [activeRegion, setActiveRegion] = useState<MarketRegion>(regionParam);
@@ -25,10 +21,11 @@ export default function MarketsPage({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (resolvedParams?.region) {
-      setActiveRegion(resolvedParams.region as MarketRegion);
+    const r = searchParams?.get('region');
+    if (r) {
+      setActiveRegion(r as MarketRegion);
     }
-  }, [resolvedParams]);
+  }, [searchParams]);
 
   useEffect(() => {
     async function load() {
@@ -122,5 +119,13 @@ export default function MarketsPage({
         <DataTable assets={filteredAssets} pageSize={15} showCategory={true} />
       </section>
     </div>
+  );
+}
+
+export default function MarketsPage() {
+  return (
+    <Suspense fallback={<LoadingSkeleton message="正在載入全球市場數據..." />}>
+      <MarketsContent />
+    </Suspense>
   );
 }
