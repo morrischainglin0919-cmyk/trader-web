@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { useApp } from '@/lib/context/AppContext';
 import { stockApi, newsApi } from '@/lib/api';
 import { fetchYahooQuote } from '@/lib/api/yahooFinanceApi';
@@ -20,18 +21,18 @@ import {
   BookmarkCheck,
   Bell,
   Scale,
-  Share2,
   TrendingUp,
   Building,
   BarChart2,
-  FileText,
-  Calendar,
-  Check,
 } from 'lucide-react';
 
 type TabKey = 'overview' | 'chart' | 'kline' | 'history' | 'stats' | 'financials' | 'news' | 'info';
 
-export function StockDetailClient({ symbol }: { symbol: string }) {
+export function StockDetailClient({ symbol }: { symbol?: string }) {
+  const routeParams = useParams();
+  const rawSymbol = symbol || (routeParams?.symbol as string) || '';
+  const currentSymbol = decodeURIComponent(rawSymbol).trim();
+
   const { assets, lastTickTime, isInWatchlist, addToWatchlist, removeFromWatchlist } = useApp();
   const [stock, setStock] = useState<Stock | null>(null);
   const [relatedNews, setRelatedNews] = useState<NewsItem[]>([]);
@@ -45,64 +46,84 @@ export function StockDetailClient({ symbol }: { symbol: string }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = useCallback(async (isRefresh = false) => {
+    if (!currentSymbol) return;
     try {
-      if (isRefresh) setRefreshing(true);
-      else {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
         setLoading(true);
         setError(false);
       }
 
-      const [stockData, newsData] = await Promise.all([
-        stockApi.getStockBySymbol(symbol),
-        newsApi.getNewsByAssetSymbol(symbol),
-      ]);
+      // 1. Fetch baseline stock data (instant load)
+      const stockData = await stockApi.getStockBySymbol(currentSymbol);
+      if (stockData) {
+        setStock(stockData);
+        setLoading(false);
+      } else {
+        setError(true);
+        setLoading(false);
+        return;
+      }
 
-      let finalStock = stockData;
-
-      // Attempt live Yahoo Finance API fetch
+      // 2. Safely load related news
       try {
-        const yahooQuote = await fetchYahooQuote(symbol, 'stock');
-        if (yahooQuote && stockData) {
-          finalStock = {
-            ...stockData,
-            price: yahooQuote.regularMarketPrice,
-            change: yahooQuote.regularMarketChange,
-            changePercent: yahooQuote.regularMarketChangePercent,
-            previousClose: yahooQuote.regularMarketPreviousClose,
-            open: yahooQuote.regularMarketOpen || stockData.open,
-            high: yahooQuote.regularMarketDayHigh || stockData.high,
-            low: yahooQuote.regularMarketDayLow || stockData.low,
-            volume: yahooQuote.regularMarketVolume || stockData.volume,
-            sparkline: yahooQuote.sparkline || stockData.sparkline,
-          };
+        const newsData = await newsApi.getNewsBySymbol(currentSymbol);
+        setRelatedNews(newsData || []);
+      } catch (err) {
+        setRelatedNews([]);
+      }
+
+      // 3. Connect to live Yahoo Finance in background without blocking
+      try {
+        const quote = await fetchYahooQuote(currentSymbol, 'stock');
+        if (quote) {
+          setStock(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              price: quote.regularMarketPrice,
+              change: quote.regularMarketChange,
+              changePercent: quote.regularMarketChangePercent,
+              previousClose: quote.regularMarketPreviousClose,
+              open: quote.regularMarketOpen || prev.open,
+              high: quote.regularMarketDayHigh || prev.high,
+              low: quote.regularMarketDayLow || prev.low,
+              volume: quote.regularMarketVolume || prev.volume,
+              sparkline: quote.sparkline || prev.sparkline,
+            };
+          });
           setLiveSource({
             isLive: true,
-            source: yahooQuote.source,
-            time: yahooQuote.timestamp
+            source: quote.source,
+            time: quote.timestamp,
           });
         }
       } catch (e) {
-        // Fallback to stockData seamlessly
+        // Fallback already active
       }
-
-      setStock(finalStock || null);
-      setRelatedNews(newsData);
     } catch (err) {
+      console.error('Stock detail load error:', err);
       setError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [symbol]);
+  }, [currentSymbol]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  const liveStock = stock || (assets.find(a => a.symbol.toLowerCase() === symbol.toLowerCase()) as Stock);
+  const liveStock = stock || (assets && assets.find(a => a.symbol.toLowerCase() === currentSymbol.toLowerCase()) as Stock);
 
-  if (loading) return <LoadingSkeleton message={`連線 Yahoo Finance 載入 ${symbol} 個股資料中...`} />;
-  if (error || !liveStock) return <ErrorState message={`找不到代號或名稱為 ${symbol} 的股票`} />;
+  if (loading && !liveStock) {
+    return <LoadingSkeleton message={`載入 ${currentSymbol || '股票'} 資料中...`} />;
+  }
+
+  if (error || !liveStock) {
+    return <ErrorState message={`找不到代號或名稱為 ${currentSymbol} 的股票`} />;
+  }
 
   const inWatchlist = isInWatchlist(liveStock.symbol);
 
@@ -202,7 +223,7 @@ export function StockDetailClient({ symbol }: { symbol: string }) {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key as TabKey)}
-            className={`px-4 py-2.5 text-xs md:text-sm font-bold border-b-2 whitespace-nowrap transition-all ${
+            className={`px-4 py-2.5 text-xs md:text-sm font-bold border-b-2 whitespace-nowrap transition-all cursor-pointer ${
               activeTab === tab.key
                 ? 'border-brand-500 text-brand-600 dark:text-brand-400'
                 : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'next/navigation';
 import { useApp } from '@/lib/context/AppContext';
 import { etfApi } from '@/lib/api';
 import { fetchYahooQuote } from '@/lib/api/yahooFinanceApi';
@@ -8,13 +9,16 @@ import { ETF } from '@/types/asset';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { RealtimeBadge } from '@/components/common/RealtimeBadge';
 import { AreaTrendChart } from '@/components/charts/AreaTrendChart';
-import { CandlestickChart } from '@/components/charts/CandlestickChart';
 import { LoadingSkeleton } from '@/components/common/LoadingSkeleton';
 import { ErrorState } from '@/components/common/ErrorState';
-import { formatMarketCap, formatVolume } from '@/lib/utils';
-import { Bookmark, BookmarkCheck, Bell, Scale, PieChart, ShieldCheck } from 'lucide-react';
+import { formatMarketCap } from '@/lib/utils';
+import { Bookmark, BookmarkCheck, PieChart, ShieldCheck } from 'lucide-react';
 
-export function EtfDetailClient({ symbol }: { symbol: string }) {
+export function EtfDetailClient({ symbol }: { symbol?: string }) {
+  const routeParams = useParams();
+  const rawSymbol = symbol || (routeParams?.symbol as string) || '';
+  const currentSymbol = decodeURIComponent(rawSymbol).trim();
+
   const { assets, lastTickTime, isInWatchlist, addToWatchlist, removeFromWatchlist } = useApp();
   const [etf, setEtf] = useState<ETF | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,28 +29,35 @@ export function EtfDetailClient({ symbol }: { symbol: string }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async (isRefresh = false) => {
+    if (!currentSymbol) return;
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
 
-      const data = await etfApi.getEtfBySymbol(symbol);
-      let finalEtf = data;
+      const data = await etfApi.getEtfBySymbol(currentSymbol);
+      if (data) {
+        setEtf(data);
+        setLoading(false);
+      }
 
       try {
-        const quote = await fetchYahooQuote(symbol, 'etf');
+        const quote = await fetchYahooQuote(currentSymbol, 'etf');
         if (quote && data) {
-          finalEtf = {
-            ...data,
-            price: quote.regularMarketPrice,
-            change: quote.regularMarketChange,
-            changePercent: quote.regularMarketChangePercent,
-            previousClose: quote.regularMarketPreviousClose,
-            open: quote.regularMarketOpen || data.open,
-            high: quote.regularMarketDayHigh || data.high,
-            low: quote.regularMarketDayLow || data.low,
-            volume: quote.regularMarketVolume || data.volume,
-            sparkline: quote.sparkline || data.sparkline,
-          };
+          setEtf(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              price: quote.regularMarketPrice,
+              change: quote.regularMarketChange,
+              changePercent: quote.regularMarketChangePercent,
+              previousClose: quote.regularMarketPreviousClose,
+              open: quote.regularMarketOpen || prev.open,
+              high: quote.regularMarketDayHigh || prev.high,
+              low: quote.regularMarketDayLow || prev.low,
+              volume: quote.regularMarketVolume || prev.volume,
+              sparkline: quote.sparkline || prev.sparkline,
+            };
+          });
           setLiveSource({
             isLive: true,
             source: quote.source,
@@ -56,24 +67,22 @@ export function EtfDetailClient({ symbol }: { symbol: string }) {
       } catch (e) {
         // Fallback gracefully
       }
-
-      setEtf(finalEtf || null);
     } catch (e) {
-      //
+      console.error(e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [symbol]);
+  }, [currentSymbol]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const liveEtf = etf || (assets.find(a => a.symbol.toLowerCase() === symbol.toLowerCase()) as ETF);
+  const liveEtf = etf || (assets && assets.find(a => a.symbol.toLowerCase() === currentSymbol.toLowerCase()) as ETF);
 
-  if (loading) return <LoadingSkeleton message={`連線 Yahoo Finance 載入 ${symbol} ETF 資料中...`} />;
-  if (!liveEtf) return <ErrorState message={`找不到代號為 ${symbol} 的 ETF`} />;
+  if (loading && !liveEtf) return <LoadingSkeleton message={`載入 ${currentSymbol || 'ETF'} 資料中...`} />;
+  if (!liveEtf) return <ErrorState message={`找不到代號為 ${currentSymbol} 的 ETF`} />;
 
   const inWatchlist = isInWatchlist(liveEtf.symbol);
 
@@ -130,7 +139,7 @@ export function EtfDetailClient({ symbol }: { symbol: string }) {
 
             <button
               onClick={toggleWatchlist}
-              className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm ${
+              className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm cursor-pointer ${
                 inWatchlist
                   ? 'bg-amber-500 text-white hover:bg-amber-600'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'

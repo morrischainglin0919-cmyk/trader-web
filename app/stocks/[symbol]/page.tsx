@@ -11,8 +11,8 @@ export function generateStaticParams() {
 export default async function StockDetailPage({
   params,
 }: {
-  params: Promise<{ symbol: string }>;
+  params: any;
 }) {
-  const resolvedParams = await params;
-  return <StockDetailClient symbol={resolvedParams.symbol} />;
+  const resolvedParams = await Promise.resolve(params);
+  return <StockDetailClient symbol={resolvedParams?.symbol} />;
 }

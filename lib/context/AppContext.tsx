@@ -198,6 +198,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [theme]);
 
+  // Live market price sync on mount (Fetch real-world prices)
+  useEffect(() => {
+    // Sync live crypto from CoinGecko (100% browser CORS compatible)
+    fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin,ripple,dogecoin,cardano&vs_currencies=usd&include_24hr_change=true')
+      .then(r => r.json())
+      .then(data => {
+        if (!data) return;
+        const mapping: Record<string, string> = {
+          'BTC': 'bitcoin',
+          'ETH': 'ethereum',
+          'SOL': 'solana',
+          'BNB': 'binancecoin',
+          'XRP': 'ripple',
+          'DOGE': 'dogecoin',
+          'ADA': 'cardano',
+        };
+        setAssets(prev =>
+          prev.map(item => {
+            const coinId = mapping[item.symbol];
+            if (coinId && data[coinId] && typeof data[coinId].usd === 'number') {
+              const livePrice = data[coinId].usd;
+              const livePct = Number((data[coinId].usd_24h_change || 0).toFixed(2));
+              const liveDiff = Number((livePrice * (livePct / 100)).toFixed(4));
+              return {
+                ...item,
+                price: livePrice,
+                change: liveDiff,
+                changePercent: livePct,
+                previousClose: Number((livePrice - liveDiff).toFixed(4)),
+              };
+            }
+            return item;
+          })
+        );
+      })
+      .catch(() => {});
+  }, []);
+
   // Real-time Market Data Simulation (Tick every 3 seconds)
   useEffect(() => {
     const interval = setInterval(() => {

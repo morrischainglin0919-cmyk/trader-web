@@ -10,9 +10,15 @@ export const newsApi = {
   },
 
   async getNewsBySymbol(symbol: string): Promise<NewsItem[]> {
-    const s = symbol.toLowerCase();
+    if (!symbol) return Promise.resolve([]);
+    const s = symbol.toLowerCase().trim();
     return Promise.resolve(
-      mockNews.filter(n => n.relatedSymbols.some(rs => rs.toLowerCase() === s))
+      mockNews.filter(n => n.relatedSymbols && n.relatedSymbols.some(rs => rs.toLowerCase() === s))
     );
+  },
+
+  // Alias for backward compatibility
+  async getNewsByAssetSymbol(symbol: string): Promise<NewsItem[]> {
+    return this.getNewsBySymbol(symbol);
   },
 };

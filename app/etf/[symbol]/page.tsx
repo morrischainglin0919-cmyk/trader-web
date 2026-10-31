@@ -11,8 +11,8 @@ export function generateStaticParams() {
 export default async function EtfDetailPage({
   params,
 }: {
-  params: Promise<{ symbol: string }>;
+  params: any;
 }) {
-  const resolvedParams = await params;
-  return <EtfDetailClient symbol={resolvedParams.symbol} />;
+  const resolvedParams = await Promise.resolve(params);
+  return <EtfDetailClient symbol={resolvedParams?.symbol} />;
 }
